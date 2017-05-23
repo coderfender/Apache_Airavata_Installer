@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<airavata_installer>
+  <os type = "mac">
+    <homebrew>
+      <brew_call>
+        brew
+      </brew_call>
+      <brew_install>
+        /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+      </brew_install>
+    </homebrew>
+    <mysql>
+      <install_command>
+        "brew install mysql"
+      </install_command>
+      <export_path>
+        "export PATH=/usr/local/mysql/bin: $PATH"
+      </export_path>
+    </mysql>
+    <php_install>
+      <version_check> php -v </version_check>
+    </php_install>
+    <apache_config>
+      <httpd_file_loaders_list>
+               <auth1>LoadModule authz_core_module libexec/apache2/mod_authz_core.so</auth1>
+               <auth2>LoadModule authz_host_module libexec/apache2/mod_authz_host.so</auth2>
+               <auth3>LoadModule userdir_module libexec/apache2/mod_userdir.so</auth3>
+               <auth4>LoadModule include_module libexec/apache2/mod_include.so</auth4>
+               <auth5>LoadModule rewrite_module libexec/apache2/mod_rewrite.so</auth5>
+               <auth6>LoadModule php5_module libexec/apache2/libphp5.so</auth6>
+               <auth7>Include /private/etc/apache2/extra/httpd-userdir.conf</auth7>
+      </httpd_file_loaders_list>
+    </apache_config>
+  </os>
+</airavata_installer>

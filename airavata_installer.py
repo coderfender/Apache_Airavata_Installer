@@ -4,15 +4,23 @@ import sys
 import subprocess
 import commands
 import shlex
-from tempfile import mkstemp
+from tempfile import TemporaryFile
 from shutil import move
 from getpass import getuser
 from pwd import getpwnam
+import json
+from pprint import pprint
+
 
 """This is the installer script for dependencies of Prerequisites for
 Apache Airavata.The neccessary components such as PHP Mcrypt,Apache Server
 and PGA"""
 
+def check_sudo():
+    if not os.getenv('SUDO_USER'):
+        print "Run the Installation in sudo mode.\n Exiting installation"
+        print "*"*50
+        sys.exit()
 
 def internet_on():
     """ This function checks for a working internet connection """
@@ -24,93 +32,100 @@ def internet_on():
         sys.exit()
 
 
-
-
-def check_or_install_homebrew():
+def check_or_install_homebrew(resource):
     current_user = os.getenv("SUDO_USER")
     curr_uid = getpwnam(current_user)[2]
     os.setuid(curr_uid)
-    brew_flag = os.system("brew")
+    print resource["mac"]["homebrew"]
+    print resource["mac"]["homebrew"]["brew_call"]
+    brew_flag = os.system(resource["mac"]["homebrew"]["brew_call"])
     if brew_flag != 256:
         print "Home Brew Not Installed! Installing homebrew"
-        hb_call = '/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"'
-        os.system(hb_call)
-        return 1
+        os.system(resource["mac"]["homebrew"]["brew_install"])
+
     else:
         print '''Homebrew already installed.Continuing with the installation
                 of other components'''
-        return 0
 
 
-def mysql_installation():
+def mysql_installation(resource):
     """This function installs MySQL through homebrew and sets no-root passwd"""
+    my_sql_call = resource["mac"]["mysql"]["install_command"]
+    os.system(my_sql_call)
+    my_sql_path_add = resource["mac"]["mysql"]["export_command"]
+    os.system(my_sql_path_add)
 
-    os.system("brew install mysql")
-    os.system("export PATH=/usr/local/mysql/bin: $PATH")
 
-
-def php_installation():
+def php_installation(resource):
     print "Hitting php installation!"
     """This function installs all the required dependencies for the php
     installation"""
-    php_version_call = subprocess.check_output('php -v', shell=True)
+    php_version_check = resource["mac"]["php_install"]["php_v"]
+    print (php_version_check)
+    php_version_call = subprocess.check_output(php_version_check, shell=True)
     if not php_version_call:
         sys.exit("Aborting Installation since PHP Version not found")
     phph_v = int(php_version_call[4]+php_version_call[6])
+    print (phph_v)
     os.system("brew tap homebrew/homebrew-php")
     os.system(("brew install php{0}-mcrypt".format(phph_v)))
     print "Finished Installation of PHP and Mcrypt Extension!"
-    print "*"*50
-    return 1
 
 
-def apache_configuration():
+def apache_configuration(resource):
     current_user = os.getenv("SUDO_USER")
-    # os.system("sudo")
-    # raw_input("Enter Sudo pw")
-    # os.system('sudo su')
-    try:
-        # apache_user_loc = os.path.join('/etc/apache2/users')
-        with open(os.path.join("user_test.conf"), 'w') as user_file:
-            dir_text = """<Directory "/Users/username/Sites/">
-                            AllowOverride All
-                            Options Indexes MultiViews FollowSymLinks
-                            Require all granted
-                            </Directory>
-                        """
-            user_file.write(dir_text)
-            # os.system("chmod 644 {0}".format("user_test.conf"))
+    current_user_conf_file_name = current_user+".conf"
+    apache_user_conf = os.path.join(
+                    resource["mac"]["apache_config"]["apache_user_location"],
+                    current_user_conf_file_name)
+    directory_config = resource["mac"]["apache_config"]["dir_text"]
+    directory_config_text = directory_config.format(current_user)
+    if os.path.exists(apache_user_conf):
+        try:
+            with open(apache_user_conf, 'r+') as user_file:
+                print "The user config file already exists.Updating it!"
+                user_file.seek(0)
+                user_file.truncate()
+                user_file.write(directory_config_text)
+                user_file.close()
+            print "Changed config for the user {0}".format(current_user)
+            os.system("chmod 644 {0}.conf".format(current_user))
+        except Exception as e:
+            print "Error to opening existing user config file"
+            sys.exit()
+    else:
+        print "File not found.Creating one"
+        with open(apache_user_conf, 'w') as user_file:
+            print "The user config file does not exist.Creating it!"
+            user_file.write(directory_config_text)
             user_file.close()
-        print "Done changing apache user files"
-        os.system("exit")
-    except Exception as e:
-        print e,
-        return False
+            os.system("chmod 644 {0}.conf".format(current_user))
         sys.exit()
+    print "Updating the config files for the file httpd.conf"
     try:
-        httpd_file_new = open('temp_config.conf', 'w')
-        with open('temp.conf', "r") as httpd_file_old:
-            httpd_file_loaders_list = ['LoadModule authz_core_module libexec/apache2/mod_authz_core.so',
-            'LoadModule authz_host_module libexec/apache2/mod_authz_host.so',
-            'LoadModule userdir_module libexec/apache2/mod_userdir.so',
-            'LoadModule include_module libexec/apache2/mod_include.so',
-            'LoadModule rewrite_module libexec/apache2/mod_rewrite.so',
-            'LoadModule php5_module libexec/apache2/libphp5.so',
-            'Include /private/etc/apache2/extra/httpd-userdir.conf']
+        httpd_file_old_path = resource["mac"]["apache_config"]["httpd.conf"]
+        httpd_temp_file_path = resource["mac"]["apache_config"]["temp_httpd_conf"]
+        httpd_file_new = open(httpd_temp_file_path,'w')
+        httpd_file_new.truncate()
+        httpd_file_new = open(httpd_temp_file_path, 'w')
+        with open(httpd_file_old_path, 'r') as httpd_file_old:
+            httpd_file_loaders_list = resource["mac"]["apache_config"]["httpd_file_loaders_list"]
+            print " updating loaders"         
             for line in httpd_file_old:
-                # print line
                 if line.startswith("#"):
                     for loader in httpd_file_loaders_list:
                         if loader in line:
                             temp = line[1:]
                             line = temp
                             print line
-                httpd_file_new.write(line)
+                httpd_file_new.writel(line)
         httpd_file_old.close()
         httpd_file_new.close()
-        os.rename('temp_config.conf', current_user+".conf")
+        os.remove(httpd_file_old)
+        print 1
+        os.rename(httpd_file_old.name, "httpd.conf")
     except Exception as e:
-        print "Error handling Apache httpd file issues.Please check!"
+        # print "Error handling Apache httpd file issues.Exiting installation!"
         print e
         sys.exit()
     print "Finished changing httpd file configurations."
@@ -131,7 +146,7 @@ def apache_configuration():
         sys.exit()
 
 
-def install_php_composer():
+def install_php_composer(resource):
     state_1 = """php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" """
     if os.system(state_1) == 0:
         state_2 = """ php -r "if (hash_file('SHA384', 'composer-setup.php') === '669656bab3166a7aff8a7506b8cb2d1c292f042046c5a994c43155c0be6190fa0355160742ab2e1c88d40d5be660b410') { echo 'Installer verified'; } else { echo 'Installer corrupt'; unlink('composer-setup.php'); } echo PHP_EOL;" """
@@ -156,8 +171,12 @@ def install_php_composer():
 
 
 if __name__ == "__main__":
-    install_php_composer()
-    apache_configuration()
-    mysql_installation()
-    check_or_install_homebrew()
-    php_installation()
+    check_sudo()
+    with open("resource.json", 'r') as json_file:
+        file_val = json.load(json_file, strict=False)
+    print type(file_val)
+    # check_or_install_homebrew(file_val)
+    # install_php_composer(file_val)
+    apache_configuration(file_val)
+    # mysql_installation(file_val)
+    # php_installation(file_val)
